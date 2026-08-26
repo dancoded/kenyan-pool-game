@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kenyan Street Pool Prototype</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #1a1a1a;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        h1 {
+            margin: 10px 0 5px 0;
+            color: #f39c12;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 24px;
+            text-shadow: 2px 2px #000;
+        }
+
+        .subtitle {
+            margin: 0 0 15px 0;
+            font-style: italic;
+            color: #bbb;
+            font-size: 14px;
+        }
+
+        #game-container {
+            position: relative;
+            background: #2c3e50;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 4px solid #34495e;
+        }
+
+        #scoreboard {
+            display: flex;
+            justify-content: space-between;
+            width: 800px;
+            margin-bottom: 10px;
+            background: #000;
+            padding: 10px 20px;
+            border-radius: 6px;
+            box-sizing: border-box;
+            border-left: 5px solid #f39c12;
+        }
+
+        .score-box {
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .score-box span {
+            color: #f39c12;
+            font-size: 18px;
+        }
+
+        canvas {
+            background: #1e7e34; /* Classic local green felt look */
+            border: 20px solid #8B4513; /* Thick wooden frame look */
+            border-radius: 4px;
+            display: block;
+            cursor: crosshair;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        #controls {
+            margin-top: 15px;
+            display: flex;
+            gap: 15px;
+            width: 800px;
+            justify-content: center;
+        }
+
+        button {
+            background: #f39c12;
+            border: none;
+            color: #fff;
+            padding: 10px 25px;
+            font-size: 15px;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            box-shadow: 0 4px #d35400;
+        }
+
+        button:hover {
+            background: #e67e22;
+        }
+
+        button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px #d35400;
+        }
+
+        #instructions {
+            margin-top: 15px;
+            max-width: 800px;
+            background: #222;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.6;
+            border: 1px solid #444;
+        }
+
+        #instructions strong {
+            color: #f39c12;
+        }
+
+        .banner {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: #f39c12;
+            padding: 20px 40px;
+            border-radius: 8px;
+            font-size: 32px;
+            font-weight: bold;
+            text-transform: uppercase;
+            border: 3px solid #f39c12;
+            pointer-events: none;
+            display: none;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Kenyan Base Pool</h1>
+    <div class="subtitle">Classic street rules: Clear the board to earn your victory!</div>
+
+    <div id="game-container">
+        <div id="scoreboard">
+            <div class="score-box">Balls Pocketed: <span id="score-val">0</span> / 7</div>
+            <div class="score-box">Fouls (Scraches): <span id="fouls-val">0</span></div>
+            <div class="score-box" id="turn-display" style="color: #2ecc71;">Status: Aiming</div>
+        </div>
+        
+        <canvas id="poolCanvas" width="800" height="400"></canvas>
+        <div id="status-banner" class="banner">FOUL!</div>
+    </div>
+
+    <div id="controls">
+        <button id="reset-btn">Reset Table</button>
+    </div>
+
+    <div id="instructions">
+        <strong>How to Play (Kenyan Base Pool Engine):</strong><br>
+        1. <strong>Aiming:</strong> Click and drag your mouse/finger <strong>away</strong> from the white Cue Ball to build striking power (like a rubber-band slingshot).<br>
+        2. <strong>Striking:</strong> Release the mouse button to hit the cue ball.<br>
+        3. <strong>Objective:</strong> Knock all 7 colored target balls into any of the 6 pockets corner and side sockets.<br>
+        4. <strong>The "Scratch" Rule:</strong> Sinking the white cue ball triggers a immediate <strong>Foul!</strong>, moving it back to the home base line (*Choko*).
+    </div>
+
+    <script>
+        const canvas = document.getElementById('poolCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreVal = document.getElementById('score-val');
+        const foulsVal = document.getElementById('fouls-val');
+        const turnDisplay = document.getElementById('turn-display');
+        const statusBanner = document.getElementById('status-banner');
+        const resetBtn = document.getElementById('reset-btn');
+
+        // Physics constants
+        const FRICTION = 0.982;
+        const BALL_RADIUS = 12;
+        const POCKET_RADIUS = 22;
+
+        let balls = [];
+        let pockets = [];
+        let cueBall = null;
+        let isDragging = false;
+        let dragStart = { x: 0, y: 0 };
+        let mousePos = { x: 0, y: 0 };
+        let ballsPocketed = 0;
+        let fouls = 0;
+
+        // Initialize pockets along the table margins
+        function initPockets() {
+            pockets = [
+                { x: 0, y: 0 }, // Top Left
+                { x: canvas.width / 2, y: 0 }, // Top Middle
+                { x: canvas.width, y: 0 }, // Top Right
+                { x: 0, y: canvas.height }, // Bottom Left
+                { x: canvas.width / 2, y: canvas.height }, // Bottom Middle
+                { x: canvas.width, y: canvas.height } // Bottom Right
+            ];
+        }
+
+        class Ball {
+            constructor(x, y, color, isCue = false) {
+                this.x = x;
+                this.y = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.color = color;
+                this.isCue = isCue;
+                this.radius = BALL_RADIUS;
+                this.removed = false;
+            }
+
+            update() {
+                if (this.removed) return;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Apply Table Friction
+                this.vx *= FRICTION;
+                this.vy *= FRICTION;
+
+                // Stop completely at ultra low speed
+                if (Math.abs(this.vx) < 0.05) this.vx = 0;
+                if (Math.abs(this.vy) < 0.05) this.vy = 0;
+
+                // Wall Collisions (Account for ball radii boundary offsets)
+                if (this.x < this.radius) {
+                    this.x = this.radius;
+                    this.vx *= -0.85;
+                }
+                if (this.x > canvas.width - this.radius) {
+                    this.x = canvas.width - this.radius;
+                    this.vx *= -0.85;
+                }
+                if (this.y < this.radius) {
+                    this.y = this.radius;
+                    this.vy *= -0.85;
+                }
+                if (this.y > canvas.height - this.radius) {
+                    this.y = canvas.height - this.radius;
+                    this.vy *= -0.85;
+                }
+            }
+
+            draw() {
+                if (this.removed) return;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.closePath();
+
+                // Highlight shine effect for local aesthetic polish
+                ctx.beginPath();
+                ctx.arc(this.x - 3, this.y - 3, 3, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                ctx.fill();
+                ctx.closePath();
+            }
+        }
+
+        function triggerBanner(text) {
+            statusBanner.textContent = text;
+            statusBanner.style.display = 'block';
+            setTimeout(() => {
+                statusBanner.style.display = 'none';
+            }, 1800);
+        }
+
+        function resetCueBall() {
+            cueBall.x = 200;
+            cueBall.y = canvas.height / 2;
+            cueBall.vx = 0;
+            cueBall.vy = 0;
+            cueBall.removed = false;
+        }
+
+        function setupTable() {
+            balls = [];
+            ballsPocketed = 0;
+            fouls = 0;
+            scoreVal.textContent = ballsPocketed;
+            foulsVal.textContent = fouls;
+
+            // Spawn Cue ball at home point (Choko area line)
+            cueBall = new Ball(200, canvas.height / 2, '#ffffff', true);
+            balls.push(cueBall);
+
+            // Set up a classic localized rack array setup on the right side
+            const rackX = 550;
+            const centerY = canvas.height / 2;
+            const colors = ['#e74c3c', '#f1c40f', '#3498db', '#9b59b6', '#e67e22', '#1abc9c', '#2c3e50'];
+
+            let colorIdx = 0;
+            // Localized mini triangle formation framework loop
+            for (let col = 0; col < 3 col++) {
+                for (let row = 0; row <= col; row++) {
+                    let x = rackX + col * (BALL_RADIUS * 2);
+                    let y = centerY + (row - col / 2) * (BALL_RADIUS * 2 + 2);
+Use code with caution.balls.push(new Ball(x, y, colors[colorIdx % colors.length]));colorIdx++;}}}// Check if anything is still spinning or rolling across the tablefunction areBallsMoving() {return balls.some(b => !b.removed && (b.vx !== 0 || b.vy !== 0));}// Deep vector circle mechanics for checking overlapping hitsfunction handleBallCollisions() {for (let i = 0; i < balls.length; i++) {for (let j = i + 1; j < balls.length; j++) {let b1 = balls[i];let b2 = balls[j];if (b1.removed || b2.removed) continue;let dx = b2.x - b1.x;let dy = b2.y - b1.y;let dist = Math.hypot(dx, dy);if (dist < b1.radius + b2.radius) {// Elastic resolution math parameterslet overlap = (b1.radius + b2.radius) - dist;let nx = dx / dist;let ny = dy / dist;// Separate overlapping nodesb1.x -= nx * overlap * 0.5;b1.y -= ny * overlap * 0.5;b2.x += nx * overlap * 0.5;b2.y += ny * overlap * 0.5;// Vector dot calculationslet kx = b1.vx - b2.vx;let ky = b1.vy - b2.vy;let p = 2 * (nx * kx + ny * ky) / 2; // Equal masses configb1.vx -= p * nx;b1.vy -= p * ny;b2.vx += p * nx;b2.vy += p * ny;}}}}function checkPocketSinks() {balls.forEach(ball => {if (ball.removed) return;pockets.forEach(pocket => {let dist = Math.hypot(ball.x - pocket.x, ball.y - pocket.y);if (dist < POCKET_RADIUS) {ball.removed = true;ball.vx = 0;ball.vy = 0;if (ball.isCue) {fouls++;foulsVal.textContent = fouls;triggerBanner("BASE SCRATCH!");setTimeout(resetCueBall, 1000);} else {ballsPocketed++;scoreVal.textContent = ballsPocketed;if(ballsPocketed === 7) {triggerBanner("GAME OVER! WINNER!");}}}});});}// Main game frame loopfunction gameLoop() {ctx.clearRect(0, 0, canvas.width, canvas.height);// Draw Base line marker (Choko boundary line)ctx.strokeStyle = 'rgba(255,255,255,0.2)';ctx.lineWidth = 2;ctx.beginPath();ctx.moveTo(200, 0);ctx.lineTo(200, canvas.height);ctx.stroke();// Draw Sockets/Pocketspockets.forEach(p => {ctx.beginPath();ctx.arc(p.x, p.y, POCKET_RADIUS, 0, Math.PI * 2);ctx.fillStyle = '#111';ctx.fill();ctx.strokeStyle = '#444';ctx.stroke();ctx.closePath();});// Update & Render Ballsballs.forEach(b => {b.update();b.draw();});handleBallCollisions();checkPocketSinks();// Handle UI State Feedback textif (areBallsMoving()) {turnDisplay.textContent = "Status: Calculating Physics...";turnDisplay.style.color = "#e67e22";} else {turnDisplay.textContent = "Status: Ready to Flick";turnDisplay.style.color = "#2ecc71";// Draw aiming cue line vector if interaction dragging matchesif (isDragging && !cueBall.removed) {ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';ctx.lineWidth = 3;ctx.setLineDash([5, 5]);ctx.beginPath();ctx.moveTo(cueBall.x, cueBall.y);// Direct inverse vector path representationlet dx = mousePos.x - cueBall.x;let dy = mousePos.y - cueBall.y;ctx.lineTo(cueBall.x - dx, cueBall.y - dy);ctx.stroke();ctx.setLineDash([]);// Draw safety release power ring indicatorctx.strokeStyle = '#f39c12';ctx.lineWidth = 2;ctx.beginPath();ctx.arc(cueBall.x, cueBall.y, Math.min(Math.hypot(dx, dy), 150), 0, Math.PI*2);ctx.stroke();}}requestAnimationFrame(gameLoop);}// Interaction Hooksfunction getCanvasMousePos(e) {const rect = canvas.getBoundingClientRect();// Multi-platform touch array normalizationconst clientX = e.touches ? e.touches[0].clientX : e.clientX;const clientY = e.touches ? e.touches[0].clientY : e.clientY;return {x: clientX - rect.left,y: clientY - rect.top};}function startDrag(e) {if (areBallsMoving() || cueBall.removed) return;const pos = getCanvasMousePos(e);// Check click hit range near cue ball objectif (Math.hypot(pos.x - cueBall.x, pos.y - cueBall.y) < BALL_RADIUS * 3) {isDragging = true;mousePos = pos;}}function moveDrag(e) {if (!isDragging) return;if(e.cancelable) e.preventDefault();mousePos = getCanvasMousePos(e);}function endDrag() {if (!isDragging) return;isDragging = false;let dx = mousePos.x - cueBall.x;let dy = mousePos.y - cueBall.y;let power = Math.min(Math.hypot(dx, dy) * 0.12, 18); // Vector clamping constraintlet angle = Math.atan2(dy, dx);// Apply inverse elastic push velocitycueBall.vx = -Math.cos(angle) * power;cueBall.vy = -Math.sin(angle) * power;}// Canvas Eventscanvas.addEventListener('mousedown', startDrag);window.addEventListener('mousemove', moveDrag);window.addEventListener('mouseup', endDrag);// Mobile Mobile Touch Bindingscanvas.addEventListener('touchstart', startDrag, { passive: false });canvas.addEventListener('touchmove', moveDrag, { passive: false });canvas.addEventListener('touchend', endDrag);resetBtn.addEventListener('click', setupTable);// Initial launch configuration sequenceinitPockets();setupTable();gameLoop();
